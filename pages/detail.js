@@ -68,129 +68,6 @@ const Field = ({ label, value }) => (
   </div>
 );
 
-// Format AI response text with better styling
-// Supports: **bold**, headers (###), bullet points (- or •), numbered lists
-function FormattedMessage({ text }) {
-  if (!text) return null;
-  
-  const lines = text.split('\n');
-  const elements = [];
-  let currentList = [];
-  let listType = null; // 'ul' or 'ol'
-  
-  const flushList = () => {
-    if (currentList.length > 0) {
-      if (listType === 'ol') {
-        elements.push(
-          <ol key={`ol-${elements.length}`} className="list-decimal list-inside space-y-1.5 my-2 ml-1">
-            {currentList.map((item, i) => (
-              <li key={i} className="text-slate-700 leading-relaxed">
-                <span className="text-slate-800">{formatInlineText(item)}</span>
-              </li>
-            ))}
-          </ol>
-        );
-      } else {
-        elements.push(
-          <ul key={`ul-${elements.length}`} className="space-y-1.5 my-2 ml-1">
-            {currentList.map((item, i) => (
-              <li key={i} className="flex gap-2 text-slate-700 leading-relaxed">
-                <span className="text-brand-600 mt-1.5 shrink-0">
-                  <svg className="w-1.5 h-1.5 fill-current" viewBox="0 0 6 6"><circle cx="3" cy="3" r="3"/></svg>
-                </span>
-                <span className="text-slate-800">{formatInlineText(item)}</span>
-              </li>
-            ))}
-          </ul>
-        );
-      }
-      currentList = [];
-      listType = null;
-    }
-  };
-  
-  // Format inline text (bold, etc.)
-  const formatInlineText = (str) => {
-    if (!str) return str;
-    // Handle **bold** text
-    const parts = str.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
-      }
-      return part;
-    });
-  };
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // Empty line
-    if (!line) {
-      flushList();
-      continue;
-    }
-    
-    // Headers (### or ##)
-    if (line.startsWith('###')) {
-      flushList();
-      const headerText = line.replace(/^#{1,3}\s*/, '');
-      elements.push(
-        <h4 key={`h-${i}`} className="font-semibold text-slate-900 mt-3 mb-1.5 text-sm flex items-center gap-2">
-          <span className="w-1 h-4 bg-brand-600 rounded-full shrink-0"></span>
-          {formatInlineText(headerText)}
-        </h4>
-      );
-      continue;
-    }
-    
-    if (line.startsWith('##')) {
-      flushList();
-      const headerText = line.replace(/^#{1,2}\s*/, '');
-      elements.push(
-        <h3 key={`h-${i}`} className="font-bold text-slate-900 mt-3 mb-2 text-[15px] border-b border-slate-100 pb-1">
-          {formatInlineText(headerText)}
-        </h3>
-      );
-      continue;
-    }
-    
-    // Bullet points (- or • or *)
-    const bulletMatch = line.match(/^[-•*]\s+(.+)/);
-    if (bulletMatch) {
-      if (listType !== 'ul') {
-        flushList();
-        listType = 'ul';
-      }
-      currentList.push(bulletMatch[1]);
-      continue;
-    }
-    
-    // Numbered list (1. or 1))
-    const numberedMatch = line.match(/^\d+[.)]\s+(.+)/);
-    if (numberedMatch) {
-      if (listType !== 'ol') {
-        flushList();
-        listType = 'ol';
-      }
-      currentList.push(numberedMatch[1]);
-      continue;
-    }
-    
-    // Regular paragraph
-    flushList();
-    elements.push(
-      <p key={`p-${i}`} className="text-slate-700 leading-relaxed my-1.5">
-        {formatInlineText(line)}
-      </p>
-    );
-  }
-  
-  flushList();
-  
-  return <div className="space-y-0.5">{elements}</div>;
-}
-
 function DonutChart({ data, size = 180 }) {
   if (!data || data.length === 0) return null;
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -775,15 +652,15 @@ export default function Detail() {
                   key={i}
                   className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {m.role === 'user' ? (
-                    <div className="max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-relaxed whitespace-pre-wrap bg-brand-700 text-white rounded-br-sm">
-                      {m.text}
-                    </div>
-                  ) : (
-                    <div className="max-w-[90%] rounded-2xl px-4 py-3 text-sm bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm">
-                      <FormattedMessage text={m.text} />
-                    </div>
-                  )}
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                      m.role === 'user'
+                        ? 'bg-brand-700 text-white rounded-br-sm'
+                        : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
+                    }`}
+                  >
+                    {m.text}
+                  </div>
                 </div>
               ))}
 
