@@ -163,6 +163,7 @@ export default function Detail() {
   const [chatInput, setChatInput] = useState('');
   const [waitingReply, setWaitingReply] = useState(false);
   const messagesEndRef = useRef(null);
+  const lastAgentReplyRef = useRef(null); // Track last reply to prevent duplicates
 
   // Generate a fresh segment_code per chat session
   const newSegmentCode = () => {
@@ -198,6 +199,7 @@ export default function Detail() {
 
     // Reset session state
     segmentCodeRef.current = newSegmentCode();
+    lastAgentReplyRef.current = null; // Reset duplicate tracker
     setChatMessages([]);
     setWsStatus('connecting');
 
@@ -221,71 +223,36 @@ export default function Detail() {
         parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       } catch (e) {
         // Not JSON — treat the whole thing as plain text
-        setChatMessages((prev) => [...prev, { role: 'agent', text: String(event.data) }]);
-        setWaitingReply(false);
-        return;
+        parsed = { answer: String(event.data) };
       }
 
-      // Agent Studio streams multiple messages per question. Real reply text
-      // lives in parsed.data.answer. Meta/status messages also have data.answer
-      // but with fixed values like "current_communication_complete" — we skip
-      // those. We also skip messages where content_type is not 'text'.
-      const data = parsed.data || {};
-      const answerText = data.answer;
-      const contentType = data.content_type;
-
-      // Skip non-text or meta-status messages
-      const META_VALUES = new Set([
-        'current_communication_complete',
-        'communication_complete',
-        '',
-        null,
-        undefined,
-      ]);
-      if (META_VALUES.has(answerText)) {
-        // If this is the "finish" marker, stop the typing indicator
-        if (parsed.finish === 'y' || data.node_answer_finish === 'y') {
-          setWaitingReply(false);
-        }
-        return;
-      }
-      if (contentType && contentType !== 'text') {
-        return;
-      }
-      if (!answerText) {
-        return;
-      }
-
-      // Append or merge into the last agent message (streamed chunks)
-      setChatMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'agent' && last.streaming) {
-          // Append to existing streaming message
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            ...last,
-            text: last.text + answerText,
-          };
-          return updated;
-        }
-        // Start a new agent message
-        return [...prev, { role: 'agent', text: String(answerText), streaming: true }];
-      });
-
-      // If this message says it's finished, mark the streaming message done
-      if (parsed.finish === 'y' || data.node_answer_finish === 'y') {
-        setChatMessages((prev) => {
-          const updated = [...prev];
-          if (updated.length > 0) {
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              streaming: false,
-            };
+      // Extract robot_user_replying from data.history array
+      // Only show messages that have actual content
+      if (parsed.data && parsed.data.history && Array.isArray(parsed.data.history)) {
+        const history = parsed.data.history;
+        // Find the last non-empty robot_user_replying message
+        for (let i = history.length - 1; i >= 0; i--) {
+          const reply = history[i].robot_user_replying;
+          if (reply && reply.trim() !== '') {
+            // Avoid duplicates: only add if different from last agent reply
+            if (lastAgentReplyRef.current !== reply) {
+              lastAgentReplyRef.current = reply;
+              setChatMessages((prev) => [...prev, { role: 'agent', text: String(reply) }]);
+            }
+            setWaitingReply(false);
+            return;
           }
-          return updated;
-        });
+        }
+        // If no robot_user_replying found, ignore this message (don't show "success")
+        return;
+      }
+
+      // Fallback for error messages
+      if (parsed.code && parsed.code !== '000000') {
+        setChatMessages((prev) => [...prev, { role: 'agent', text: `Error: ${parsed.message || 'Unknown error'}` }]);
         setWaitingReply(false);
       }
+      // Ignore success status messages like { code: "000000", message: "success" }
     };
 
     ws.onerror = (err) => {
