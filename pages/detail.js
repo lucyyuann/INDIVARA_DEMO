@@ -163,6 +163,7 @@ export default function Detail() {
   const [chatInput, setChatInput] = useState('');
   const [waitingReply, setWaitingReply] = useState(false);
   const messagesEndRef = useRef(null);
+  const lastAgentReplyRef = useRef(null); // Track last reply to prevent duplicates
 
   // Generate a fresh segment_code per chat session
   const newSegmentCode = () => {
@@ -198,6 +199,7 @@ export default function Detail() {
 
     // Reset session state
     segmentCodeRef.current = newSegmentCode();
+    lastAgentReplyRef.current = null; // Reset duplicate tracker
     setChatMessages([]);
     setWsStatus('connecting');
 
@@ -232,7 +234,11 @@ export default function Detail() {
         for (let i = history.length - 1; i >= 0; i--) {
           const reply = history[i].robot_user_replying;
           if (reply && reply.trim() !== '') {
-            setChatMessages((prev) => [...prev, { role: 'agent', text: String(reply) }]);
+            // Avoid duplicates: only add if different from last agent reply
+            if (lastAgentReplyRef.current !== reply) {
+              lastAgentReplyRef.current = reply;
+              setChatMessages((prev) => [...prev, { role: 'agent', text: String(reply) }]);
+            }
             setWaitingReply(false);
             return;
           }
