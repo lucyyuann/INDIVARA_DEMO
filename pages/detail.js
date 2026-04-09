@@ -224,19 +224,29 @@ export default function Detail() {
         parsed = { answer: String(event.data) };
       }
 
-      // Try multiple field names because we don't know the exact schema yet.
-      // After the first real test, narrow this down to the actual field.
-      const text =
-        parsed.answer ||
-        parsed.message ||
-        parsed.response ||
-        parsed.text ||
-        parsed.content ||
-        parsed.data ||
-        (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+      // Extract robot_user_replying from data.history array
+      // Only show messages that have actual content
+      if (parsed.data && parsed.data.history && Array.isArray(parsed.data.history)) {
+        const history = parsed.data.history;
+        // Find the last non-empty robot_user_replying message
+        for (let i = history.length - 1; i >= 0; i--) {
+          const reply = history[i].robot_user_replying;
+          if (reply && reply.trim() !== '') {
+            setChatMessages((prev) => [...prev, { role: 'agent', text: String(reply) }]);
+            setWaitingReply(false);
+            return;
+          }
+        }
+        // If no robot_user_replying found, ignore this message (don't show "success")
+        return;
+      }
 
-      setChatMessages((prev) => [...prev, { role: 'agent', text: String(text) }]);
-      setWaitingReply(false);
+      // Fallback for error messages
+      if (parsed.code && parsed.code !== '000000') {
+        setChatMessages((prev) => [...prev, { role: 'agent', text: `Error: ${parsed.message || 'Unknown error'}` }]);
+        setWaitingReply(false);
+      }
+      // Ignore success status messages like { code: "000000", message: "success" }
     };
 
     ws.onerror = (err) => {
