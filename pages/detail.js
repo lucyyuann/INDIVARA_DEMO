@@ -163,6 +163,7 @@ export default function Detail() {
   const [chatInput, setChatInput] = useState('');
   const [waitingReply, setWaitingReply] = useState(false);
   const messagesEndRef = useRef(null);
+  const lastAgentReplyRef = useRef(null); // Track last reply to prevent duplicates
 
   // Generate a fresh segment_code per chat session
   const newSegmentCode = () => {
@@ -198,6 +199,7 @@ export default function Detail() {
 
     // Reset session state
     segmentCodeRef.current = newSegmentCode();
+    lastAgentReplyRef.current = null; // Reset duplicate tracker
     setChatMessages([]);
     setWsStatus('connecting');
 
@@ -224,19 +226,33 @@ export default function Detail() {
         parsed = { answer: String(event.data) };
       }
 
-      // Try multiple field names because we don't know the exact schema yet.
-      // After the first real test, narrow this down to the actual field.
-      const text =
-        parsed.answer ||
-        parsed.message ||
-        parsed.response ||
-        parsed.text ||
-        parsed.content ||
-        parsed.data ||
-        (typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+      // Extract robot_user_replying from data.history array
+      // Only show messages that have actual content
+      if (parsed.data && parsed.data.history && Array.isArray(parsed.data.history)) {
+        const history = parsed.data.history;
+        // Find the last non-empty robot_user_replying message
+        for (let i = history.length - 1; i >= 0; i--) {
+          const reply = history[i].robot_user_replying;
+          if (reply && reply.trim() !== '') {
+            // Avoid duplicates: only add if different from last agent reply
+            if (lastAgentReplyRef.current !== reply) {
+              lastAgentReplyRef.current = reply;
+              setChatMessages((prev) => [...prev, { role: 'agent', text: String(reply) }]);
+            }
+            setWaitingReply(false);
+            return;
+          }
+        }
+        // If no robot_user_replying found, ignore this message (don't show "success")
+        return;
+      }
 
-      setChatMessages((prev) => [...prev, { role: 'agent', text: String(text) }]);
-      setWaitingReply(false);
+      // Fallback for error messages
+      if (parsed.code && parsed.code !== '000000') {
+        setChatMessages((prev) => [...prev, { role: 'agent', text: `Error: ${parsed.message || 'Unknown error'}` }]);
+        setWaitingReply(false);
+      }
+      // Ignore success status messages like { code: "000000", message: "success" }
     };
 
     ws.onerror = (err) => {
